@@ -41,6 +41,7 @@ var resources = {
   salesOrderShipment: './resources/sales_order_shipment.js',
   store: './resources/store.js'
 };
+var registeredResources = {};
 var mandatory = {};
 var configDefaults = {
   host: mandatory,
@@ -84,20 +85,10 @@ function Magento(config) {
 
   // initializing resources
   for (key in resources) {
-    this[key] = new (require(resources[key]))();
-
-    // 'method' listener, for making a request
-    this[key].on('method', function() {
-      var args = slice.call(arguments);
-      args[0] = this.prefix ? this.prefix + args[0] : args[0];
-      self.method.apply(self, args);
-    }.bind(this[key]));
-
-    // error listener
-    this[key].on('error', function(err, callback) {
-      err.resource = this.prefix;
-      callback(err);
-    });
+    this.register(key, new (require(resources[key]))());
+  }
+  for (key in registeredResources) {
+    this.register(key, registeredResources[key]);
   }
 
   this.sessionId = null;
@@ -106,6 +97,38 @@ function Magento(config) {
   return this;
 }
 util.inherits(Magento, events.EventEmitter);
+
+Magento.register = function(key, resource) {
+  if (typeof key === 'string') {
+    registeredResources[key] = resource;
+    return;
+  }
+
+  if (typeof key === 'object') {
+    var obj = key;
+    for (key in obj) {
+      registeredResources[key] = obj[key];
+    }
+    return;
+  }
+}
+
+Magento.prototype.register = function(key, resource) {
+  this[key] = resource;
+
+  // 'method' listener, for making a request
+  this[key].on('method', function() {
+    var args = slice.call(arguments);
+    args[0] = this.prefix ? this.prefix + args[0] : args[0];
+    self.method.apply(self, args);
+  }.bind(this[key]));
+
+  // error listener
+  this[key].on('error', function(err, callback) {
+    err.resource = this.prefix;
+    callback(err);
+  });
+};
 
 Magento.prototype.method = function(method, args /* = optional arr */, callback) {
   var self = this;
